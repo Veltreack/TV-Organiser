@@ -152,4 +152,6 @@ if __name__ == "__main__":
     search_instance.search("Example")  # Example search call
     print(search_instance.results)  # Print search results for verification
     main_screen.root.mainloop()
-    
+
+
+print('Hello')
