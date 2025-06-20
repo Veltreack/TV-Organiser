@@ -1,0 +1,155 @@
+import tkinter as tk
+
+class Mainscreen:
+    def __init__(self, parent):
+        self.parent = parent
+        self.title = "Main Screen"
+        self.description = "List of Channels and Programs"
+        self.root = tk.Tk() if parent is None else tk.Toplevel(parent)
+        self.root.title(self.title)
+        self.root.configure(bg="#001f4d")  # Dark blue background
+
+    def display(self):
+        label_title = tk.Label(self.root, text=self.title, bg="#001f4d", fg="white", font=("Arial", 18, "bold"))
+        label_title.pack(pady=(50, 10))
+        label_desc = tk.Label(self.root, text=self.description, bg="#001f4d", fg="white", font=("Arial", 12))
+        label_desc.pack(pady=(0, 20))
+        self.bookmark_button = tk.Button(self.root, text="Bookmark", command=self.Bookmark, font=("Arial", 12))
+        self.bookmark_button.pack(pady=(0, 10))
+
+        # Create a frame to hold the genre checkboxes on the left side, next to title/description
+        container = tk.Frame(self.root, bg="#001f4d")
+        container.pack(fill="both", expand=True, padx=20, pady=10)
+
+        genre_frame = tk.Frame(container, bg="#001f4d")
+        genre_frame.pack(side="left", anchor="n", padx=(0, 20), pady=(0, 0))
+
+        content_frame = tk.Frame(container, bg="#001f4d")
+        content_frame.pack(side="left", fill="both", expand=True)
+
+        genres = [
+            "Action", "Comedy", "Drama", "Horror", "Romance",
+            "Sci-Fi", "Documentary", "Thriller", "Animation", "Fantasy"
+        ]
+        self.genre_vars = []
+        for i, genre in enumerate(genres):
+            var = tk.BooleanVar()
+            chk = tk.Checkbutton(
+            genre_frame, text=genre, variable=var,
+            bg="#001f4d", fg="white", selectcolor="#003366",
+            font=("Arial", 11)
+            )
+            chk.grid(row=i, column=0, sticky="w", padx=10, pady=2)
+            self.genre_vars.append(var)
+
+
+
+    def run(self):
+        self.display()
+        self.root.mainloop()
+    def Bookmark(self):
+        # Placeholder for Bookmark functionality
+        pass
+
+
+class Bookmark():
+    def __init__(self):
+        self.Bookmark = []
+        self.isBookmarked = False
+    def add_bookmark(self, item):
+        """Add an item to the bookmark list."""
+        self.Bookmark.append(item)
+        self.isBookmarked = not self.isBookmarked
+        return self.isBookmarked
+    def remove_bookmark(self, item):
+        """Remove an item from the bookmark list."""
+        if item in self.Bookmark:
+            self.Bookmark.remove(item)
+    def get_bookmarks(self):
+        """Return the list of bookmarks."""
+        return self.Bookmark
+class Search():
+    def __init__(self):
+        self.search_term = ""
+        self.results = []     
+
+    def searchscreen(self):
+        """Initialize the search screen."""
+        self.root = tk.Toplevel()
+        self.root.title("Search Screen")
+        self.root.configure(bg="#003366")
+        label = tk.Label(self.root, text="Search", bg="#003366", fg="white", font=("Arial", 18, "bold"))
+        label.pack(pady=(20, 10))
+        entry = tk.Entry(self.root, font=("Arial", 12))
+        entry.pack(pady=(0, 10))
+        button = tk.Button(self.root, text="Search", command=lambda: self.search(entry.get()), font=("Arial", 12))
+        button.pack(pady=(0, 20))
+        self.results = []
+        self.search_term = ""
+        self.root.mainloop()   
+
+    def search(self, term):
+        """Perform a search based on the given term and print its position if found."""
+        self.search_term = term
+        if not term:
+            print("Please enter a search term.")
+            return
+        self.channels = ['Example', 'Sample', 'Test', 'Demo', 'Channel1', 'Channel2', 'Channel3']
+        self.channels.sort()  # Ensure the list is sorted for binary search
+        self.results = []
+        left, right = 0, len(self.channels) - 1
+        found = False
+        position = -1
+        while left <= right:
+            mid = (left + right) // 2
+            if self.channels[mid] == term:
+                found = True
+                position = mid
+                self.results.append(self.channels[mid])
+                break
+            elif self.channels[mid] < term:
+                left = mid + 1
+            else:
+                right = mid - 1
+        if found:
+            print(f"'{term}' found at position {position} in the sorted list.")
+        else:
+            print(f"'{term}' not found in the list.")
+
+# Example usage
+if __name__ == "__main__":
+    main_screen = Mainscreen(None)
+    # Add a button to open the search screen from the main screen
+    def open_search():
+        main_screen.root.withdraw()  # Hide the main screen
+        search_screen = Search()
+        def on_close():
+            search_screen.root.destroy()
+            main_screen.root.deiconify()
+        # Show search screen in the same window (not a new window)
+        search_screen.root = main_screen.root
+        for widget in search_screen.root.winfo_children():
+            widget.destroy()
+        search_screen.root.title("Search Screen")
+        search_screen.root.configure(bg="#003366")
+        label = tk.Label(search_screen.root, text="Search", bg="#003366", fg="white", font=("Arial", 18, "bold"))
+        label.pack(pady=(20, 10))
+        entry = tk.Entry(search_screen.root, font=("Arial", 12))
+        entry.pack(pady=(0, 10))
+        button = tk.Button(search_screen.root, text="Search", command=lambda: search_screen.search(entry.get()), font=("Arial", 12))
+        button.pack(pady=(0, 20))
+        # Add a back button to return to main screen
+        back_button = tk.Button(search_screen.root, text="Back", command=lambda: (
+            [w.destroy() for w in search_screen.root.winfo_children()],
+            main_screen.display()
+        ), font=("Arial", 12))
+        back_button.pack(pady=(0, 10))
+    # Add the button to the main screen at the top right corner
+    search_button = tk.Button(main_screen.root, text="Open Search", command=open_search, font=("Arial", 12))
+    search_button.place(relx=1.0, y=10, anchor="ne")  # Top right corner with some padding
+    main_screen.run()
+    search_instance = Search()
+    search_instance.search("Example")  # Example search call
+    print(search_instance.results)  # Print search results for verification
+    main_screen.root.mainloop()
+    
