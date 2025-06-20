@@ -82,8 +82,6 @@ class Search():
         label.pack(pady=(20, 10))
         entry = tk.Entry(self.root, font=("Arial", 12))
         entry.pack(pady=(0, 10))
-        button = tk.Button(self.root, text="Search", command=lambda: self.search(entry.get()), font=("Arial", 12))
-        button.pack(pady=(0, 20))
         self.results = []
         self.search_term = ""
         self.root.mainloop()   
@@ -95,7 +93,15 @@ class Search():
             print("Please enter a search term.")
             return
         self.channels = ['Example', 'Sample', 'Test', 'Demo', 'Channel1', 'Channel2', 'Channel3']
-        self.channels.sort()  # Ensure the list is sorted for binary search
+        # Sort the list using selection sort for binary search
+        n = len(self.channels)
+        for i in range(n):
+            min_idx = i
+            for j in range(i + 1, n):
+                if self.channels[j] < self.channels[min_idx]:
+                    min_idx = j
+                if min_idx != i:
+                    self.channels[i], self.channels[min_idx] = self.channels[min_idx], self.channels[i]
         self.results = []
         left, right = 0, len(self.channels) - 1
         found = False
@@ -115,7 +121,25 @@ class Search():
             print(f"'{term}' found at position {position} in the sorted list.")
         else:
             print(f"'{term}' not found in the list.")
+class Results:
+    def __init__(self, results):
+        self.results = results
 
+    def resultscreen(self):
+        """Initialize the results screen and display the search results."""
+        self.root = tk.Toplevel()
+        self.root.title("Results Screen")
+        self.root.configure(bg="#003366")
+        label = tk.Label(self.root, text="Search Results", bg="#003366", fg="white", font=("Arial", 18, "bold"))
+        label.pack(pady=(20, 10))
+        self.results_listbox = tk.Listbox(self.root, font=("Arial", 12), width=50)
+        self.results_listbox.pack(pady=(0, 20))
+        self.update_results_display()
+
+    def update_results_display(self):
+        self.results_listbox.delete(0, tk.END)
+        for item in self.results:
+            self.results_listbox.insert(tk.END, item)
 # Example usage
 if __name__ == "__main__":
     main_screen = Mainscreen(None)
@@ -123,33 +147,26 @@ if __name__ == "__main__":
     def open_search():
         main_screen.root.withdraw()  # Hide the main screen
         search_screen = Search()
+        # Override the close event to show main screen again
         def on_close():
             search_screen.root.destroy()
             main_screen.root.deiconify()
-        # Show search screen in the same window (not a new window)
-        search_screen.root = main_screen.root
-        for widget in search_screen.root.winfo_children():
-            widget.destroy()
-        search_screen.root.title("Search Screen")
-        search_screen.root.configure(bg="#003366")
-        label = tk.Label(search_screen.root, text="Search", bg="#003366", fg="white", font=("Arial", 18, "bold"))
-        label.pack(pady=(20, 10))
-        entry = tk.Entry(search_screen.root, font=("Arial", 12))
-        entry.pack(pady=(0, 10))
-        button = tk.Button(search_screen.root, text="Search", command=lambda: search_screen.search(entry.get()), font=("Arial", 12))
-        button.pack(pady=(0, 20))
-        # Add a back button to return to main screen
-        back_button = tk.Button(search_screen.root, text="Back", command=lambda: (
-            [w.destroy() for w in search_screen.root.winfo_children()],
-            main_screen.display()
-        ), font=("Arial", 12))
-        back_button.pack(pady=(0, 10))
+        search_screen.searchscreen = lambda: (
+            setattr(search_screen, 'root', tk.Toplevel()),
+            search_screen.root.title("Search Screen"),
+            search_screen.root.configure(bg="#003366"),
+            tk.Label(search_screen.root, text="Search", bg="#003366", fg="white", font=("Arial", 18, "bold")).pack(pady=(20, 10)),
+            (entry := tk.Entry(search_screen.root, font=("Arial", 12))).pack(pady=(0, 10)),
+            tk.Button(search_screen.root, text="Search", command=lambda: search_screen.search(entry.get()), font=("Arial", 12)).pack(pady=(0, 20)),
+            search_screen.root.protocol("WM_DELETE_WINDOW", on_close),
+            search_screen.root.mainloop()
+        )
+        search_screen.searchscreen()
     # Add the button to the main screen at the top right corner
     search_button = tk.Button(main_screen.root, text="Open Search", command=open_search, font=("Arial", 12))
     search_button.place(relx=1.0, y=10, anchor="ne")  # Top right corner with some padding
     main_screen.run()
     search_instance = Search()
-    search_instance.search("Example")  # Example search call
     print(search_instance.results)  # Print search results for verification
     main_screen.root.mainloop()
     
