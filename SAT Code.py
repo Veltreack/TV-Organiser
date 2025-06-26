@@ -1,5 +1,6 @@
 import tkinter as tk
 import requests
+import datetime
 
 import xml.etree.ElementTree as ET
 
@@ -32,7 +33,8 @@ class Mainscreen:
         self.description = "List of Channels and Programs"
         self.root = tk.Tk() if parent is None else tk.Toplevel(parent)
         self.root.title(self.title)
-        self.root.configure(bg="#001f4d")  # Dark blue background
+        self.root.configure(bg="#001f4d")
+        self.root.geometry("1400x800")  # Enlarged window size
 
     def display(self):
         label_title = tk.Label(self.root, text=self.title, bg="#001f4d", fg="white", font=("Arial", 18, "bold"))
@@ -60,12 +62,100 @@ class Mainscreen:
         for i, genre in enumerate(genres):
             var = tk.BooleanVar()
             chk = tk.Checkbutton(
-            genre_frame, text=genre, variable=var,
-            bg="#001f4d", fg="white", selectcolor="#003366",
-            font=("Arial", 11)
+                genre_frame, text=genre, variable=var,
+                bg="#001f4d", fg="white", selectcolor="#003366",
+                font=("Arial", 11)
             )
             chk.grid(row=i, column=0, sticky="w", padx=10, pady=2)
             self.genre_vars.append(var)
+
+        # Call the methods to display channels and programs
+        self.display_channels()
+        self.display_programs()
+        self.timeline()  # Call the timeline method to display the timeline
+    def display_channels(self):
+        """Display the channels in a grid layout."""       
+        self.coordinateX = 200  # Initial coordinates
+        self.coordinateY = 200
+
+        coordinateX = self.coordinateX  # Resets coordinates to original position
+        coordinateY = self.coordinateY
+
+        for row in range(0, 5):
+            for coloumn in range(0, 1):
+                tk.Button(self.root, text="Channel", width=30, height=10).place(x=coordinateX, y=coordinateY)
+                coordinateX = coordinateX + 50  # Moves coordinates to the right by 50
+            coordinateX = self.coordinateX  # Resets back to original x value new row
+            coordinateY = coordinateY + 100  # Changes the row
+    def display_programs(self):
+        """Display the programs in a grid layout."""
+        self.coordinateX = 400  # Initial coordinates
+        self.coordinateY = 200
+        coordinateX = self.coordinateX  # Resets coordinates to original position
+        coordinateY = self.coordinateY
+        for row in range(0, 5):
+            for coloumn in range(0, 5):
+                tk.Button(self.root, text="Program", width=30, height=10).place(x=coordinateX, y=coordinateY)
+                coordinateX = coordinateX + 200  # Moves coordinates to the right by 50
+            coordinateX = self.coordinateX  # Resets back to original x value new row
+            coordinateY = coordinateY + 100  # Changes the row
+    def timeline(self):
+        """Display the timeline of programs above the boxes and update it live."""
+
+        # Create a frame above the channel/program boxes to hold the timeline
+        timeline_frame = tk.Frame(self.root, bg="#001f4d")
+        timeline_frame.place(x=150, y=100)  # Adjust y to be above the boxes
+
+        label = tk.Label(timeline_frame, text="Timeline of Programs", bg="#001f4d", fg="white", font=("Arial", 14, "bold"))
+        label.pack(pady=(0, 5))
+
+        # Make the canvas and timeline line longer (e.g., width=1500, line from 50 to 1450)
+        self.timeline_canvas = tk.Canvas(timeline_frame, bg="#001f4d", width=1500, height=60, highlightthickness=0)
+        self.timeline_canvas.pack()
+
+        # Draw the longer timeline line
+        self.timeline_canvas.create_line(50, 30, 1450, 30, fill="white", width=2)
+
+        # Add time markers from 00:00 to 02:00 next day (26 hours, every 2 hours)
+        self.timeline_hours = []
+        total_hours = 26  # 00:00 to 02:00 next day
+        for i in range(0, total_hours // 2 + 1):
+            hour = (i * 2) % 24
+            day = " (next)" if (i * 2) >= 24 else ""
+            x = 50 + i * ((1450 - 50) / (total_hours // 2))
+            time_label = f"{hour:02d}:00{day}"
+            t = self.timeline_canvas.create_line(x, 25, x, 35, fill="white", width=2)
+            t_text = self.timeline_canvas.create_text(x, 45, text=time_label, fill="white", font=("Arial", 9))
+            self.timeline_hours.append((t, t_text))
+
+        # Draw the current time indicator
+        self.current_time_line = self.timeline_canvas.create_line(0, 15, 0, 45, fill="red", width=2)
+        self.current_time_text = self.timeline_canvas.create_text(0, 10, text="", fill="red", font=("Arial", 9, "bold"))
+
+        def update_time_indicator():
+            now = datetime.datetime.now()
+            # Timeline starts at 00:00, ends at 22:00 (12*2 hours)
+            start_hour = 0
+            end_hour = 22
+            total_minutes = (end_hour - start_hour) * 60
+            minutes_now = now.hour * 60 + now.minute
+            if minutes_now < start_hour * 60:
+                minutes_now = start_hour * 60
+            elif minutes_now > end_hour * 60:
+                minutes_now = end_hour * 60
+            # Map minutes_now to x position
+            x = 50 + (minutes_now - start_hour * 60) * (1000 / total_minutes)
+            self.timeline_canvas.coords(self.current_time_line, x, 15, x, 45)
+            self.timeline_canvas.coords(self.current_time_text, x, 10)
+            self.timeline_canvas.itemconfig(self.current_time_text, text=now.strftime("%H:%M"))
+            self.timeline_canvas.after(1000, update_time_indicator)
+
+        update_time_indicator()
+
+        # Example: Add program blocks (dummy data)
+        # timeline_canvas.create_rectangle(100, 15, 250, 45, fill="#3399ff", outline="")
+        # timeline_canvas.create_text(175, 30, text="Sample Program", fill="white", font=("Arial", 10))
+
 
 
 
@@ -77,22 +167,22 @@ class Mainscreen:
         pass
 
 
-class Bookmark():
+class Bookmark:
     def __init__(self):
-        self.Bookmark = []
+        self.bookmarks = []
         self.isBookmarked = False
     def add_bookmark(self, item):
         """Add an item to the bookmark list."""
-        self.Bookmark.append(item)
+        self.bookmarks.append(item)
         self.isBookmarked = not self.isBookmarked
         return self.isBookmarked
     def remove_bookmark(self, item):
         """Remove an item from the bookmark list."""
-        if item in self.Bookmark:
-            self.Bookmark.remove(item)
+        if item in self.bookmarks:
+            self.bookmarks.remove(item)
     def get_bookmarks(self):
         """Return the list of bookmarks."""
-        return self.Bookmark
+        return self.bookmarks
 class Search():
     def __init__(self):
         self.search_term = ""
@@ -167,7 +257,6 @@ class Results:
             self.results_listbox.insert(tk.END, item)
 # Example usage
 if __name__ == "__main__":
-    fetch_and_print_epg("https://xmltv.net/xml_files/Melbourne.xml")
     main_screen = Mainscreen(None)
 
     # Add a button to open the search screen from the main screen
@@ -179,7 +268,6 @@ if __name__ == "__main__":
             search_screen.root.destroy()
             main_screen.root.deiconify()
         def show_search_screen():
-            search_screen.root = tk.Toplevel()
             search_screen.root.title("Search Screen")
             search_screen.root.configure(bg="#003366")
             label = tk.Label(search_screen.root, text="Search", bg="#003366", fg="white", font=("Arial", 18, "bold"))
@@ -194,7 +282,9 @@ if __name__ == "__main__":
     # Add the button to the main screen at the top right corner
     search_button = tk.Button(main_screen.root, text="Open Search", command=open_search, font=("Arial", 12))
     search_button.place(relx=1.0, y=10, anchor="ne")  # Top right corner with some padding
-main_screen.run()
+    main_screen.run()
+    #fetch_and_print_epg("https://xmltv.net/xml_files/Melbourne.xml")
+
 # search_instance = Search()
 # print(search_instance.results)  # Print search results for verification
 # main_screen.root.mainloop()
