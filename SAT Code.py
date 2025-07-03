@@ -785,6 +785,228 @@ class ChannelDescription:
     def show_channel_description(self, display_name):
         desc = self.channel_descriptions.get(display_name, "No description available.")
         messagebox.showinfo(f"{display_name} - Channel Description", desc)
+class Description:
+    def __init__(self, main_screen=None):
+        self.main_screen = main_screen
+        self.program_descriptions = {}
+
+    def fetch_program_descriptions(self):
+        url = "https://xmltv.net/xml_files/Melbourne.xml"
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            xml_data = response.content
+            root = ET.fromstring(xml_data)
+            for programme in root.findall('./programme'):
+                channel_id = programme.get('channel')
+                start = programme.get('start')
+                stop = programme.get('stop')
+                title = programme.findtext('title') or ""
+                desc = programme.findtext('desc') or "No description available."
+                key = (channel_id, start, stop, title)
+                self.program_descriptions[key] = desc
+        except Exception:
+            self.program_descriptions = {}
+
+    def show_description(self, channel_id, start, stop, title):
+        key = (channel_id, start, stop, title)
+        desc = self.program_descriptions.get(key, "No description available.")
+        messagebox.showinfo(f"{title} - Description", desc)
+
+# Patch Mainscreen channel and program buttons for description popups
+def patch_mainscreen_for_descriptions():
+    orig_update = Mainscreen._update_channel_program_display
+    def new_update(self):
+        orig_update(self)
+        # Attach channel description logic to channel buttons
+        if not hasattr(self, 'channel_description_window'):
+            self.channel_description_window = ChannelDescription()
+            self.channel_description_window.fetch_channel_descriptions()
+        chan_desc_window = self.channel_description_window
+
+        if not hasattr(self, 'description_window'):
+            self.description_window = Description(self)
+            self.description_window.fetch_program_descriptions()
+        desc_window = self.description_window
+
+        if hasattr(self, 'channel_prog_widgets'):
+            # Map display_name to channel_id for quick lookup
+            display_to_id = {display_name: channel_id for channel_id, display_name in getattr(self, 'sorted_channels', [])}
+            for widgets in self.channel_prog_widgets:
+                # Channel button
+                channel_btn = widgets[0]
+                channel_btn_text = channel_btn.cget("text").replace("★ ", "")
+                channel_btn.config(command=lambda name=channel_btn_text: chan_desc_window.show_channel_description(name))
+                # Program buttons
+                channel_id = display_to_id.get(channel_btn_text)
+                for btn in widgets[1:]:
+                    prog_text = btn.cget("text")
+                    m = re.match(r"(?:Now:\s*)?(.*) \((\d{2}:\d{2})-(\d{2}:\d{2})\)", prog_text)
+                    if m:
+                        title, start_str, stop_str = m.groups()
+                        prog_match = None
+                        if channel_id:
+                            for prog in self.programs_by_channel.get(channel_id, []):
+                                if prog['title'] == title:
+                                    try:
+                                        start_dt = datetime.datetime.strptime(prog['start'][:14], "%Y%m%d%H%M%S")
+                                        stop_dt = datetime.datetime.strptime(prog['stop'][:14], "%Y%m%d%H%M%S")
+                                        start_local = start_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%H:%M")
+                                        stop_local = stop_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%H:%M")
+                                        if start_local == start_str and stop_local == stop_str:
+                                            prog_match = prog
+                                            break
+                                    except Exception:
+                                        continue
+                        if channel_id and prog_match:
+                            btn.config(command=lambda cid=channel_id, st=prog_match['start'], sp=prog_match['stop'], t=title:
+                                       desc_window.show_description(cid, st, sp, t))
+                        else:
+                            btn.config(command=lambda: messagebox.showinfo("Description", "No description available."))
+    Mainscreen._update_channel_program_display = new_update
+
+patch_mainscreen_for_descriptions()
+
+# --- Patch Search results for description popups ---
+orig_search = Search.search
+def new_search(self, term):
+    orig_search(self, term)
+    # Attach description logic to search result boxes
+    if not hasattr(self, 'description_window'):
+        self.description_window = Description()
+        self.description_window.fetch_program_descriptions()
+    desc_window = self.description_window
+
+    # Build a mapping from (channel, title, start, stop) to description
+    # Already done in desc_window.program_descriptions
+
+    # Map channel display name to channel_id for lookup
+    # We'll need to fetch this mapping
+    url = "https://xmltv.net/xml_files/Melbourne.xml"
+    channel_name_to_id = {}
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        xml_data = response.content
+        root = ET.fromstring(xml_data)
+        for channel in root.findall('./channel'):
+            channel_id = channel.get('id')
+            display_name = channel.findtext('display-name')
+            if channel_id and display_name:
+                channel_name_to_id[display_name] = channel_id
+    except Exception:
+        pass
+
+    # Attach click event to each result_box (for all results)
+    if hasattr(self, 'results_frame'):
+        children = self.results_frame.winfo_children()
+        for i, item in enumerate(self.results):
+            if i < len(children):
+                result_box = children[i]
+                # Find channel_id
+                channel_id = channel_name_to_id.get(item["channel"])
+                title = item["title"]
+                # Parse start and stop as in Description
+                start = item["start"]
+                stop = item["stop"]
+                # Try to find the original UTC start/stop from the XML
+                prog_start = prog_stop = None
+                try:
+                    for programme in root.findall('./programme'):
+                        prog_title = programme.findtext('title') or ""
+                        ch_id = programme.get('channel')
+                        if ch_id == channel_id and prog_title == title:
+                            # Compare local time string
+                            start_dt = datetime.datetime.strptime(programme.get('start')[:14], "%Y%m%d%H%M%S")
+                            stop_dt = datetime.datetime.strptime(programme.get('stop')[:14], "%Y%m%d%H%M%S")
+                            start_local = start_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+                            stop_local = stop_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%H:%M")
+                            if start_local == start and stop_local == stop:
+                                prog_start = programme.get('start')
+                                prog_stop = programme.get('stop')
+                                break
+                except Exception:
+                    pass
+
+                def make_show_desc(cid=channel_id, st=prog_start, sp=prog_stop, t=title):
+                    return lambda e: desc_window.show_description(cid, st, sp, t) if cid and st and sp else messagebox.showinfo("Description", "No description available.")
+
+                # Bind left-click to show description
+                result_box.bind("<Button-1>", make_show_desc())
+                # Also change cursor on hover for better UX
+                result_box.config(cursor="hand2")
+
+Search.search = new_search
+
+# --- Patch GenreFilter results for description popups ---
+orig_apply_filter = GenreFilter.apply_filter
+def new_apply_filter(self):
+    orig_apply_filter(self)
+    # Attach description logic to genre filter result boxes
+    if not hasattr(self, 'description_window'):
+        self.description_window = Description()
+        self.description_window.fetch_program_descriptions()
+    desc_window = self.description_window
+
+    # Map channel display name to channel_id for lookup
+    url = "https://xmltv.net/xml_files/Melbourne.xml"
+    channel_name_to_id = {}
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        xml_data = response.content
+        root = ET.fromstring(xml_data)
+        for channel in root.findall('./channel'):
+            channel_id = channel.get('id')
+            display_name = channel.findtext('display-name')
+            if channel_id and display_name:
+                channel_name_to_id[display_name] = channel_id
+    except Exception:
+        pass
+
+    # Attach click event to each result_box (for all results)
+    if hasattr(self, 'results_frame'):
+        children = self.results_frame.winfo_children()
+        for i, item in enumerate(self.results):
+            if i < len(children):
+                result_box = children[i]
+                # Find channel_id
+                channel_id = channel_name_to_id.get(item["channel"])
+                title = item["title"]
+                # Parse start and stop as in Description
+                start = item["start"]
+                stop = item["stop"]
+                # Try to find the original UTC start/stop from the XML
+                prog_start = prog_stop = None
+                try:
+                    for programme in root.findall('./programme'):
+                        prog_title = programme.findtext('title') or ""
+                        ch_id = programme.get('channel')
+                        if ch_id == channel_id and prog_title == title:
+                            # Compare local time string
+                            start_dt = datetime.datetime.strptime(programme.get('start')[:14], "%Y%m%d%H%M%S")
+                            stop_dt = datetime.datetime.strptime(programme.get('stop')[:14], "%Y%m%d%H%M%S")
+                            start_local = start_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+                            stop_local = stop_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%H:%M")
+                            if start_local == start and stop_local == stop:
+                                prog_start = programme.get('start')
+                                prog_stop = programme.get('stop')
+                                break
+                except Exception:
+                    pass
+
+                def make_show_desc(cid=channel_id, st=prog_start, sp=prog_stop, t=title):
+                    return lambda e: desc_window.show_description(cid, st, sp, t) if cid and st and sp else messagebox.showinfo("Description", "No description available.")
+
+                # Bind left-click to show description
+                result_box.bind("<Button-1>", make_show_desc())
+                # Also change cursor on hover for better UX
+                result_box.config(cursor="hand2")
+
+GenreFilter.apply_filter = new_apply_filter
 if __name__ == "__main__":
     main_screen = Mainscreen(None)
     main_screen.run() 
