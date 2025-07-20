@@ -392,6 +392,166 @@ def new_display(self, *args, **kwargs):
     orig_display(self, *args, **kwargs)
     add_search_button_to_main(self)
 Mainscreen.display = new_display
+class GenreFilter:
+    def __init__(self):
+        self.selected_genres = set()
+        self.results = []
+        self.root = None
+        self.genre_vars = {}
+
+    def genrescreen(self):
+        """Initialize the genre filter screen."""
+        self.root = tk.Toplevel()
+        self.root.title("Genre Filter")
+        self.root.configure(bg="#003366")
+        label = tk.Label(self.root, text="Filter by Genre", bg="#003366", fg="white", font=("Arial", 18, "bold"))
+        label.pack(pady=(20, 10))
+
+        # --- Genre checkboxes ---
+        # Genres based on actual EPG data from xmltv.net/Melbourne.xml
+        # Dynamically extract 10 unique genres from the EPG XML
+        url = "https://xmltv.net/xml_files/Melbourne.xml"
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            xml_data = response.content
+            root = ET.fromstring(xml_data)
+            genre_set = set()
+            for programme in root.findall('./programme'):
+                for cat in programme.findall('category'):
+                    if cat.text:
+                        genre_set.add(cat.text.strip())
+            genres = sorted(list(genre_set))[:10]
+        except Exception as e:
+            genres = [
+            "News", "Sport", "Drama", "Comedy", "Documentary",
+            "Movie", "Children's", "Reality", "Lifestyle", "Entertainment"
+            ]
+        checkbox_frame = tk.Frame(self.root, bg="#003366")
+        checkbox_frame.pack(pady=(0, 10))
+        for genre in genres:
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(
+                checkbox_frame, text=genre, variable=var,
+                bg="#003366", fg="white", selectcolor="#224477",
+                font=("Arial", 12), anchor="w"
+            )
+            cb.pack(side="left", padx=8)
+            self.genre_vars[genre] = var
+
+        tk.Button(
+            self.root, text="Apply Filter",
+            command=self.apply_filter, font=("Arial", 12)
+        ).pack(pady=(0, 20))
+
+        # --- Scrollable results frame ---
+        container = tk.Frame(self.root, bg="#003366")
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+        canvas = tk.Canvas(container, bg="#003366", highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        self.results_frame = tk.Frame(canvas, bg="#003366")
+
+        self.results_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        canvas.create_window((0, 0), window=self.results_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def apply_filter(self):
+        """Filter EPG data for selected genres and show results."""
+        self.selected_genres = {g for g, v in self.genre_vars.items() if v.get()}
+        self.results = []
+        # Clear previous results
+        for widget in self.results_frame.winfo_children():
+            widget.destroy()
+        if not self.selected_genres:
+            tk.Label(self.results_frame, text="Please select at least one genre.", bg="#003366", fg="white", font=("Arial", 12)).pack(anchor="w", pady=5, padx=10)
+            return
+
+        url = "https://xmltv.net/xml_files/Melbourne.xml"
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            xml_data = response.content
+            root = ET.fromstring(xml_data)
+        except Exception as e:
+            tk.Label(self.results_frame, text=f"Failed to fetch EPG data: {e}", bg="#003366", fg="red", font=("Arial", 12)).pack(anchor="w", pady=5, padx=10)
+            return
+
+        # Build channel id to display-name mapping
+        channel_map = {}
+        for channel in root.findall('./channel'):
+            channel_id = channel.get('id')
+            display_name = channel.findtext('display-name')
+            if channel_id and display_name:
+                channel_map[channel_id] = display_name
+
+        # Search for matching programs by genre
+        for programme in root.findall('./programme'):
+            genres = [el.text for el in programme.findall('category') if el.text]
+            if any(g in self.selected_genres for g in genres):
+                title = programme.findtext('title') or ""
+                channel_id = programme.get('channel')
+                channel_name = channel_map.get(channel_id, channel_id)
+                start = programme.get('start')
+                stop = programme.get('stop')
+                try:
+                    start_dt = datetime.datetime.strptime(start[:14], "%Y%m%d%H%M%S")
+                    stop_dt = datetime.datetime.strptime(stop[:14], "%Y%m%d%H%M%S")
+                    start_str = start_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+                    stop_str = stop_dt.replace(tzinfo=datetime.timezone.utc).astimezone().strftime("%H:%M")
+                except Exception:
+                    start_str = start
+                    stop_str = stop
+                self.results.append({
+                    "channel": channel_name,
+                    "title": title,
+                    "genres": ", ".join(genres),
+                    "start": start_str,
+                    "stop": stop_str
+                })
+
+        if self.results:
+            for item in self.results:
+                result_box = tk.Frame(self.results_frame, bg="#224477", bd=2, relief="groove")
+                result_box.pack(fill="x", padx=10, pady=6, anchor="w")
+                # Show name (title) on top, channel name below, both medium size
+                tk.Label(result_box, text=item["title"], bg="#224477", fg="white", font=("Arial", 14, "bold")).pack(anchor="w", padx=8, pady=(4,0))
+                tk.Label(result_box, text=item["channel"], bg="#224477", fg="#ffcc00", font=("Arial", 13)).pack(anchor="w", padx=8, pady=(0,2))
+                tk.Label(result_box, text=f"Genres: {item['genres']}", bg="#224477", fg="#99ffcc", font=("Arial", 11)).pack(anchor="w", padx=8)
+                tk.Label(result_box, text=f"{item['start']} - {item['stop']}", bg="#224477", fg="#cccccc", font=("Arial", 11, "italic")).pack(anchor="w", padx=8, pady=(0,4))
+        else:
+            tk.Label(self.results_frame, text="No results found for selected genres.", bg="#003366", fg="white", font=("Arial", 12)).pack(anchor="w", pady=5, padx=10)
+
+# --- Add a genre filter button to the top right corner of the main screen ---
+def add_genre_filter_button_to_main(main_screen):
+    def open_genre_filter():
+        main_screen.root.withdraw()  # Hide the main screen
+        genre_filter = GenreFilter()
+        genre_filter.genrescreen()
+        def on_close():
+            genre_filter.root.destroy()
+            main_screen.root.deiconify()
+        genre_filter.root.protocol("WM_DELETE_WINDOW", on_close)
+    # Place the button in the top right corner, next to Search
+    genre_btn = tk.Button(main_screen.root, text="Genre Filter", command=open_genre_filter, font=("Arial", 12))
+    genre_btn.place(relx=1.0, x=-250, y=10, anchor="ne")  # Adjust x for padding
+
+# Patch Mainscreen to add the genre filter button after initialization
+orig_display2 = Mainscreen.display
+def new_display2(self, *args, **kwargs):
+    orig_display2(self, *args, **kwargs)
+    add_genre_filter_button_to_main(self)
+Mainscreen.display = new_display2
+
 class Bookmark:
     def __init__(self):
         self.bookmarked_channels = set()
@@ -785,6 +945,7 @@ class ChannelDescription:
     def show_channel_description(self, display_name):
         desc = self.channel_descriptions.get(display_name, "No description available.")
         messagebox.showinfo(f"{display_name} - Channel Description", desc)
+
 class Description:
     def __init__(self, main_screen=None):
         self.main_screen = main_screen
